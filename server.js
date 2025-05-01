@@ -7,7 +7,7 @@ const { spawn } = require('child_process');
 
 const app = express();
 const upload = multer({ dest: 'uploads/' });
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 app.use(cors()); // Allow frontend access
 
