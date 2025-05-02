@@ -4,32 +4,48 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const ffmpegPath = require('ffmpeg-static'); // Important for Render
 
 const app = express();
 const upload = multer({ dest: 'uploads/' });
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 
 app.use(cors()); // Allow frontend access
 
 app.post('/compress', upload.single('video'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).send('No file uploaded.');
+  }
+
   const inputPath = req.file.path;
   const outputPath = path.join('uploads', `compressed_${Date.now()}.mp4`);
 
-  // FFmpeg command to compress video
-  const ffmpeg = spawn(require('ffmpeg-static'), [
+  const ffmpeg = spawn(ffmpegPath, [
     '-i', inputPath,
     '-vcodec', 'libx264',
-    '-crf', '28', // Higher = more compression, lower = better quality
+    '-crf', '28', // Adjust CRF to control quality vs size
     outputPath
   ]);
 
+  // Debug logs
+  ffmpeg.stdout.on('data', (data) => {
+    console.log(`FFmpeg stdout: ${data}`);
+  });
+
+  ffmpeg.stderr.on('data', (data) => {
+    console.error(`FFmpeg stderr: ${data}`);
+  });
+
   ffmpeg.on('close', (code) => {
+    console.log(`FFmpeg exited with code ${code}`);
+
     if (code !== 0) {
+      fs.unlinkSync(inputPath); // Cleanup input file even on error
       return res.status(500).send('FFmpeg compression failed.');
     }
 
-    const fileStream = fs.createReadStream(outputPath);
     res.setHeader('Content-Type', 'video/mp4');
+    const fileStream = fs.createReadStream(outputPath);
     fileStream.pipe(res);
 
     fileStream.on('close', () => {
@@ -39,7 +55,9 @@ app.post('/compress', upload.single('video'), (req, res) => {
   });
 
   ffmpeg.on('error', (err) => {
-    res.status(500).send('FFmpeg process error.');
+    console.error(`FFmpeg process error: ${err}`);
+    fs.unlinkSync(inputPath);
+    return res.status(500).send('FFmpeg process failed.');
   });
 });
 
